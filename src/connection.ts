@@ -5,6 +5,8 @@ import { Socket } from 'net';
 import constants from 'constants';
 import { createSecureContext, SecureContext, SecureContextOptions } from 'tls';
 
+import { Readable } from 'readable-stream';
+
 import {
   loginWithUsernamePassword,
   loginWithVmMSI,
@@ -30,7 +32,7 @@ import RpcRequestPayload from './rpcrequest-payload';
 import SqlBatchPayload from './sqlbatch-payload';
 import MessageIO from './message-io';
 import { Parser as TokenStreamParser } from './token/token-stream-parser';
-import { Transaction, ISOLATION_LEVEL } from './transaction';
+import { Transaction, ISOLATION_LEVEL, assertValidIsolationLevel } from './transaction';
 import { ConnectionError, RequestError } from './errors';
 import { Connector } from './connector';
 import { name as libraryName } from './library';
@@ -40,6 +42,11 @@ import { Metadata } from './metadata-parser';
 import { FedAuthInfoToken, FeatureExtAckToken } from './token/token';
 import { createNTLMRequest } from './ntlm';
 import { ColumnMetadata } from './token/colmetadata-token-parser';
+
+import depd from 'depd';
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const deprecate = depd('tedious');
 
 // A rather basic state machine for managing a connection.
 // Implements something approximating s3.2.1.
@@ -58,61 +65,61 @@ const DEFAULT_LANGUAGE = 'us_english';
 const DEFAULT_DATEFORMAT = 'mdy';
 
 interface AzureActiveDirectoryMsiAppServiceAuthentication {
-  type: 'azure-active-directory-msi-app-service',
+  type: 'azure-active-directory-msi-app-service';
   options: {
-    clientId?: string,
-    msiEndpoint?: string,
-    msiSecret?: string
-  }
+    clientId?: string;
+    msiEndpoint?: string;
+    msiSecret?: string;
+  };
 }
 
 interface AzureActiveDirectoryMsiVmAuthentication {
-  type: 'azure-active-directory-msi-vm',
+  type: 'azure-active-directory-msi-vm';
   options: {
-    clientId?: string,
-    msiEndpoint?: string
-  }
+    clientId?: string;
+    msiEndpoint?: string;
+  };
 }
 
 interface AzureActiveDirectoryAccessTokenAuthentication {
-  type: 'azure-active-directory-access-token',
+  type: 'azure-active-directory-access-token';
   options: {
-    token: string
-  }
+    token: string;
+  };
 }
 
 interface AzureActiveDirectoryPasswordAuthentication {
-  type: 'azure-active-directory-password',
+  type: 'azure-active-directory-password';
   options: {
-    userName: string,
-    password: string,
-  }
+    userName: string;
+    password: string;
+  };
 }
 
 interface AzureActiveDirectoryServicePrincipalSecret {
-  type: 'azure-active-directory-service-principal-secret',
+  type: 'azure-active-directory-service-principal-secret';
   options: {
-    clientId: string,
-    clientSecret: string,
-    tenantId: string
-  }
+    clientId: string;
+    clientSecret: string;
+    tenantId: string;
+  };
 }
 
 interface NtlmAuthentication {
-  type: 'ntlm',
+  type: 'ntlm';
   options: {
-    userName: string,
-    password: string,
-    domain: string
-  }
+    userName: string;
+    password: string;
+    domain: string;
+  };
 }
 
 interface DefaultAuthentication {
-  type: 'default',
+  type: 'default';
   options: {
-    userName?: string,
-    password?: string
-  }
+    userName?: string;
+    password?: string;
+  };
 }
 
 interface ErrorWithCode extends Error {
@@ -120,141 +127,141 @@ interface ErrorWithCode extends Error {
 }
 
 interface InternalConnectionConfig {
-  server: string,
-  authentication: DefaultAuthentication | NtlmAuthentication | AzureActiveDirectoryPasswordAuthentication | AzureActiveDirectoryMsiAppServiceAuthentication | AzureActiveDirectoryMsiVmAuthentication | AzureActiveDirectoryAccessTokenAuthentication | AzureActiveDirectoryServicePrincipalSecret,
-  options: InternalConnectionOptions
+  server: string;
+  authentication: DefaultAuthentication | NtlmAuthentication | AzureActiveDirectoryPasswordAuthentication | AzureActiveDirectoryMsiAppServiceAuthentication | AzureActiveDirectoryMsiVmAuthentication | AzureActiveDirectoryAccessTokenAuthentication | AzureActiveDirectoryServicePrincipalSecret;
+  options: InternalConnectionOptions;
 }
 
 export interface InternalConnectionOptions {
-  abortTransactionOnError: boolean,
-  appName: undefined | string,
-  camelCaseColumns: boolean,
-  cancelTimeout: number,
-  columnNameReplacer: undefined| ((colName: string, index: number, metadata: Metadata) => string),
-  connectionRetryInterval: number,
-  connectTimeout: number,
-  connectionIsolationLevel: typeof ISOLATION_LEVEL[keyof typeof ISOLATION_LEVEL],
-  cryptoCredentialsDetails: SecureContextOptions,
-  database: undefined | string,
-  datefirst: number,
-  dateFormat: string,
+  abortTransactionOnError: boolean;
+  appName: undefined | string;
+  camelCaseColumns: boolean;
+  cancelTimeout: number;
+  columnNameReplacer: undefined| ((colName: string, index: number, metadata: Metadata) => string);
+  connectionRetryInterval: number;
+  connectTimeout: number;
+  connectionIsolationLevel: typeof ISOLATION_LEVEL[keyof typeof ISOLATION_LEVEL];
+  cryptoCredentialsDetails: SecureContextOptions;
+  database: undefined | string;
+  datefirst: number;
+  dateFormat: string;
   debug: {
-    data: boolean,
-    packet: boolean,
-    payload: boolean,
-    token: boolean
-  },
-  enableAnsiNull: null | boolean,
-  enableAnsiNullDefault: null | boolean,
-  enableAnsiPadding: null | boolean,
-  enableAnsiWarnings: null | boolean,
-  enableArithAbort: null | boolean,
-  enableConcatNullYieldsNull: null | boolean,
-  enableCursorCloseOnCommit: null | boolean,
-  enableImplicitTransactions: null | boolean,
-  enableNumericRoundabort: null | boolean,
-  enableQuotedIdentifier: null | boolean,
-  encrypt: boolean,
-  fallbackToDefaultDb: boolean,
-  instanceName: undefined | string,
-  isolationLevel: typeof ISOLATION_LEVEL[keyof typeof ISOLATION_LEVEL],
-  language: string,
-  localAddress: undefined | string,
-  maxRetriesOnTransientErrors: number,
-  multiSubnetFailover: boolean,
-  packetSize: number,
-  port: undefined | number,
-  readOnlyIntent: boolean,
-  requestTimeout: number,
-  rowCollectionOnDone: boolean,
-  rowCollectionOnRequestCompletion: boolean,
-  tdsVersion: string,
-  textsize: string,
-  trustServerCertificate: boolean,
-  useColumnNames: boolean,
-  useUTC: boolean,
-  lowerCaseGuids: boolean
+    data: boolean;
+    packet: boolean;
+    payload: boolean;
+    token: boolean;
+  };
+  enableAnsiNull: null | boolean;
+  enableAnsiNullDefault: null | boolean;
+  enableAnsiPadding: null | boolean;
+  enableAnsiWarnings: null | boolean;
+  enableArithAbort: null | boolean;
+  enableConcatNullYieldsNull: null | boolean;
+  enableCursorCloseOnCommit: null | boolean;
+  enableImplicitTransactions: null | boolean;
+  enableNumericRoundabort: null | boolean;
+  enableQuotedIdentifier: null | boolean;
+  encrypt: boolean;
+  fallbackToDefaultDb: boolean;
+  instanceName: undefined | string;
+  isolationLevel: typeof ISOLATION_LEVEL[keyof typeof ISOLATION_LEVEL];
+  language: string;
+  localAddress: undefined | string;
+  maxRetriesOnTransientErrors: number;
+  multiSubnetFailover: boolean;
+  packetSize: number;
+  port: undefined | number;
+  readOnlyIntent: boolean;
+  requestTimeout: number;
+  rowCollectionOnDone: boolean;
+  rowCollectionOnRequestCompletion: boolean;
+  tdsVersion: string;
+  textsize: string;
+  trustServerCertificate: boolean;
+  useColumnNames: boolean;
+  useUTC: boolean;
+  lowerCaseGuids: boolean;
 }
 
 interface State {
-  name: string,
-  enter?(this: Connection): void,
-  exit?(this: Connection, newState: State): void,
+  name: string;
+  enter?(this: Connection): void;
+  exit?(this: Connection, newState: State): void;
   events: {
-    socketError?(this: Connection, err: Error): void
-    connectTimeout?(this: Connection): void,
-    socketConnect?(this: Connection): void,
-    data?(this: Connection, data: Buffer): void,
-    message?(this: Connection): void,
-    retry?(this: Connection): void,
-    routingChange?(this: Connection): void,
-    reconnect?(this: Connection): void,
-    featureExtAck?(this: Connection, token: FeatureExtAckToken): void,
-    fedAuthInfo?(this: Connection, token: FedAuthInfoToken): void
-    endOfMessageMarkerReceived?(this: Connection): void,
-    loginFailed?(this: Connection): void,
-    attention?(this: Connection): void
-  }
+    socketError?(this: Connection, err: Error): void;
+    connectTimeout?(this: Connection): void;
+    socketConnect?(this: Connection): void;
+    data?(this: Connection, data: Buffer): void;
+    message?(this: Connection): void;
+    retry?(this: Connection): void;
+    routingChange?(this: Connection): void;
+    reconnect?(this: Connection): void;
+    featureExtAck?(this: Connection, token: FeatureExtAckToken): void;
+    fedAuthInfo?(this: Connection, token: FedAuthInfoToken): void;
+    endOfMessageMarkerReceived?(this: Connection): void;
+    loginFailed?(this: Connection): void;
+    attention?(this: Connection): void;
+  };
 }
 
-interface ConnectionConfiguration {
-  server: string,
-  options?: ConnectionOptions,
+export interface ConnectionConfiguration {
+  server: string;
+  options?: ConnectionOptions;
   authentication?: {
-    type?: string,
-    options?: any
-  }
+    type?: string;
+    options?: any;
+  };
 }
 
 interface ConnectionOptions {
-  abortTransactionOnError?: boolean,
-  appName?: string | undefined,
-  camelCaseColumns?: boolean,
-  cancelTimeout?: number,
-  columnNameReplacer?: (colName: string, index: number, metadata: Metadata) => string,
-  connectionRetryInterval?: number,
-  connectTimeout?: number,
-  connectionIsolationLevel?: number,
-  cryptoCredentialsDetails?: {},
-  database?: string | undefined,
-  datefirst?: number,
-  dateFormat?: string,
+  abortTransactionOnError?: boolean;
+  appName?: string | undefined;
+  camelCaseColumns?: boolean;
+  cancelTimeout?: number;
+  columnNameReplacer?: (colName: string, index: number, metadata: Metadata) => string;
+  connectionRetryInterval?: number;
+  connectTimeout?: number;
+  connectionIsolationLevel?: number;
+  cryptoCredentialsDetails?: {};
+  database?: string | undefined;
+  datefirst?: number;
+  dateFormat?: string;
   debug?: {
-    data: boolean,
-    packet: boolean,
-    payload: boolean,
-    token: boolean
-  },
-  enableAnsiNull?: boolean,
-  enableAnsiNullDefault?: boolean,
-  enableAnsiPadding?: boolean,
-  enableAnsiWarnings?: boolean,
-  enableArithAbort?: boolean,
-  enableConcatNullYieldsNull?: boolean,
-  enableCursorCloseOnCommit?: boolean | null,
-  enableImplicitTransactions?: boolean,
-  enableNumericRoundabort?: boolean,
-  enableQuotedIdentifier?: boolean,
-  encrypt?: boolean,
-  fallbackToDefaultDb?: boolean,
-  instanceName?: string | undefined,
-  isolationLevel?: number,
-  language?: string,
-  localAddress?: string | undefined,
-  maxRetriesOnTransientErrors?: number,
-  multiSubnetFailover?: boolean,
-  packetSize?: number,
-  port?: number,
-  readOnlyIntent?: boolean,
-  requestTimeout?: number,
-  rowCollectionOnDone?: boolean,
-  rowCollectionOnRequestCompletion?: boolean,
-  tdsVersion?: string,
-  textsize?: string,
-  trustServerCertificate?: boolean,
-  useColumnNames?: boolean,
-  useUTC?: boolean,
-  lowerCaseGuids?: boolean,
+    data: boolean;
+    packet: boolean;
+    payload: boolean;
+    token: boolean;
+  };
+  enableAnsiNull?: boolean;
+  enableAnsiNullDefault?: boolean;
+  enableAnsiPadding?: boolean;
+  enableAnsiWarnings?: boolean;
+  enableArithAbort?: boolean;
+  enableConcatNullYieldsNull?: boolean;
+  enableCursorCloseOnCommit?: boolean | null;
+  enableImplicitTransactions?: boolean;
+  enableNumericRoundabort?: boolean;
+  enableQuotedIdentifier?: boolean;
+  encrypt?: boolean;
+  fallbackToDefaultDb?: boolean;
+  instanceName?: string | undefined;
+  isolationLevel?: number;
+  language?: string;
+  localAddress?: string | undefined;
+  maxRetriesOnTransientErrors?: number;
+  multiSubnetFailover?: boolean;
+  packetSize?: number;
+  port?: number;
+  readOnlyIntent?: boolean;
+  requestTimeout?: number;
+  rowCollectionOnDone?: boolean;
+  rowCollectionOnRequestCompletion?: boolean;
+  tdsVersion?: string;
+  textsize?: string;
+  trustServerCertificate?: boolean;
+  useColumnNames?: boolean;
+  useUTC?: boolean;
+  lowerCaseGuids?: boolean;
 }
 
 const CLEANUP_TYPE = {
@@ -283,20 +290,20 @@ class Connection extends EventEmitter {
   ntlmpacketBuffer: undefined | Buffer;
 
   STATE!: {
-    CONNECTING: State,
-    SENT_PRELOGIN: State,
-    REROUTING: State,
-    TRANSIENT_FAILURE_RETRY: State,
-    SENT_TLSSSLNEGOTIATION: State,
-    SENT_LOGIN7_WITH_STANDARD_LOGIN: State,
-    SENT_LOGIN7_WITH_NTLM: State,
-    SENT_LOGIN7_WITH_FEDAUTH: State,
-    LOGGED_IN_SENDING_INITIAL_SQL: State,
-    LOGGED_IN: State,
-    BUILDING_CLIENT_REQUEST: State,
-    SENT_CLIENT_REQUEST: State,
-    SENT_ATTENTION: State,
-    FINAL: State
+    INITIALIZED: State;
+    CONNECTING: State;
+    SENT_PRELOGIN: State;
+    REROUTING: State;
+    TRANSIENT_FAILURE_RETRY: State;
+    SENT_TLSSSLNEGOTIATION: State;
+    SENT_LOGIN7_WITH_STANDARD_LOGIN: State;
+    SENT_LOGIN7_WITH_NTLM: State;
+    SENT_LOGIN7_WITH_FEDAUTH: State;
+    LOGGED_IN_SENDING_INITIAL_SQL: State;
+    LOGGED_IN: State;
+    SENT_CLIENT_REQUEST: State;
+    SENT_ATTENTION: State;
+    FINAL: State;
   }
 
   routingData: any;
@@ -509,7 +516,7 @@ class Connection extends EventEmitter {
         enableAnsiNullDefault: true,
         enableAnsiPadding: true,
         enableAnsiWarnings: true,
-        enableArithAbort: false,
+        enableArithAbort: true,
         enableConcatNullYieldsNull: true,
         enableCursorCloseOnCommit: null,
         enableImplicitTransactions: false,
@@ -592,6 +599,8 @@ class Connection extends EventEmitter {
       }
 
       if (config.options.connectionIsolationLevel !== undefined) {
+        assertValidIsolationLevel(config.options.connectionIsolationLevel, 'config.options.connectionIsolationLevel');
+
         this.config.options.connectionIsolationLevel = config.options.connectionIsolationLevel;
       }
 
@@ -779,9 +788,7 @@ class Connection extends EventEmitter {
       }
 
       if (config.options.isolationLevel !== undefined) {
-        if (typeof config.options.isolationLevel !== 'number') {
-          throw new TypeError('The "config.options.isolationLevel" property must be of type number.');
-        }
+        assertValidIsolationLevel(config.options.isolationLevel, 'config.options.isolationLevel');
 
         this.config.options.isolationLevel = config.options.isolationLevel;
       }
@@ -909,6 +916,8 @@ class Connection extends EventEmitter {
         }
 
         this.config.options.trustServerCertificate = config.options.trustServerCertificate;
+      } else {
+        deprecate('The default value for `config.options.trustServerCertificate` will change from `true` to `false` in the next major version of `tedious`. Set the value to `true` or `false` explicitly to silence this message.');
       }
 
       if (config.options.useColumnNames !== undefined) {
@@ -971,8 +980,31 @@ class Connection extends EventEmitter {
     this.curTransientRetryCount = 0;
     this.transientErrorLookup = new TransientErrorLookup();
 
-    this.state = this.STATE.CONNECTING;
-    this.state.enter!.call(this);
+    this.state = this.STATE.INITIALIZED;
+
+    process.nextTick(() => {
+      if (this.state === this.STATE.INITIALIZED) {
+        const message = 'In the next major version of `tedious`, creating a new ' +
+          '`Connection` instance will no longer establish a connection to the ' +
+          'server automatically. Please use the new `connect` helper function or ' +
+          'call the `.connect` method on the newly created `Connection` object to ' +
+          'silence this message.';
+        deprecate(message);
+        this.connect();
+      }
+    });
+  }
+
+  connect(connectListener?: (err?: Error) => void) {
+    if (this.state !== this.STATE.INITIALIZED) {
+      throw new ConnectionError('`.connect` can not be called on a Connection in `' + this.state.name + '` state.');
+    }
+
+    if (connectListener) {
+      this.once('connect', connectListener);
+    }
+
+    this.transitionTo(this.STATE.CONNECTING);
   }
 
   close() {
@@ -980,8 +1012,27 @@ class Connection extends EventEmitter {
   }
 
   initialiseConnection() {
-    this.connect();
     this.createConnectTimer();
+
+    if (this.config.options.port) {
+      return this.connectOnPort(this.config.options.port, this.config.options.multiSubnetFailover);
+    } else {
+      return new InstanceLookup().instanceLookup({
+        server: this.config.server,
+        instanceName: this.config.options.instanceName!,
+        timeout: this.config.options.connectTimeout
+      }, (message, port) => {
+        if (this.state === this.STATE.FINAL) {
+          return;
+        }
+
+        if (message) {
+          this.emit('connect', ConnectionError(message, 'EINSTLOOKUP'));
+        } else {
+          this.connectOnPort(port!, this.config.options.multiSubnetFailover);
+        }
+      });
+    }
   }
 
   cleanupConnection(cleanupType: typeof CLEANUP_TYPE[keyof typeof CLEANUP_TYPE]) {
@@ -1290,28 +1341,6 @@ class Connection extends EventEmitter {
     });
 
     return tokenStreamParser;
-  }
-
-  connect() {
-    if (this.config.options.port) {
-      return this.connectOnPort(this.config.options.port, this.config.options.multiSubnetFailover);
-    } else {
-      return new InstanceLookup().instanceLookup({
-        server: this.config.server,
-        instanceName: this.config.options.instanceName!,
-        timeout: this.config.options.connectTimeout
-      }, (message, port) => {
-        if (this.state === this.STATE.FINAL) {
-          return;
-        }
-
-        if (message) {
-          this.emit('connect', ConnectionError(message, 'EINSTLOOKUP'));
-        } else {
-          this.connectOnPort(port!, this.config.options.multiSubnetFailover);
-        }
-      });
-    }
   }
 
   connectOnPort(port: number, multiSubnetFailover: boolean) {
@@ -1649,9 +1678,10 @@ class Connection extends EventEmitter {
 
   sendInitialSql() {
     const payload = new SqlBatchPayload(this.getInitialSql(), this.currentTransactionDescriptor(), this.config.options);
-    payload.getData((data) => {
-      return this.messageIo.sendMessage(TYPE.SQL_BATCH, data);
-    });
+
+    const message = new Message({ type: TYPE.SQL_BATCH });
+    this.messageIo.outgoingMessageStream.write(message);
+    Readable.from(payload).pipe(message);
   }
 
   getInitialSql() {
@@ -1689,7 +1719,7 @@ class Connection extends EventEmitter {
 
     if (this.config.options.enableConcatNullYieldsNull === true) {
       options.push('set concat_null_yields_null on');
-    } else if (this.config.options.enableArithAbort === false) {
+    } else if (this.config.options.enableConcatNullYieldsNull === false) {
       options.push('set concat_null_yields_null off');
     }
 
@@ -1780,8 +1810,8 @@ class Connection extends EventEmitter {
    @param {boolean} [options.tableLock=false] - Places a bulk update(BU) lock on table while performing bulk load. Uses row locks by default.
    @param {callback} callback - Function to call after BulkLoad executes.
    */
-  newBulkLoad(table: string, callback: BulkLoadCallback) : BulkLoad
-  newBulkLoad(table: string, options: BulkLoadOptions, callback: BulkLoadCallback) : BulkLoad
+  newBulkLoad(table: string, callback: BulkLoadCallback): BulkLoad
+  newBulkLoad(table: string, options: BulkLoadOptions, callback: BulkLoadCallback): BulkLoad
   newBulkLoad(table: string, callbackOrOptions: BulkLoadOptions | BulkLoadCallback, callback?: BulkLoadCallback) {
     let options: BulkLoadOptions;
 
@@ -1862,7 +1892,10 @@ class Connection extends EventEmitter {
   }
 
   beginTransaction(callback: (err: Error | null | undefined, transactionDescriptor?: Buffer) => void, name = '', isolationLevel = this.config.options.isolationLevel) {
+    assertValidIsolationLevel(isolationLevel, 'isolationLevel');
+
     const transaction = new Transaction(name, isolationLevel);
+
     if (this.config.options.tdsVersion < '7_2') {
       return this.execSqlBatch(new Request('SET TRANSACTION ISOLATION LEVEL ' + (transaction.isolationLevelToTSQL()) + ';BEGIN TRAN ' + transaction.name, (err) => {
         this.transactionDepth++;
@@ -1922,7 +1955,12 @@ class Connection extends EventEmitter {
     return this.makeRequest(request, TYPE.TRANSACTION_MANAGER, transaction.savePayload(this.currentTransactionDescriptor()));
   }
 
+  // eslint-disable-next-line space-before-function-paren
   transaction<T extends (...args: any[]) => void>(cb: (err: Error | null | undefined, txDone?: (err: Error | null | undefined, done: T, ...args: Parameters<T>) => void) => void, isolationLevel?: typeof ISOLATION_LEVEL[keyof typeof ISOLATION_LEVEL]) {
+    if (isolationLevel) {
+      assertValidIsolationLevel(isolationLevel, 'isolationLevel');
+    }
+
     if (typeof cb !== 'function') {
       throw new TypeError('`cb` must be a function');
     }
@@ -1976,8 +2014,8 @@ class Connection extends EventEmitter {
   }
 
   makeRequest(request: BulkLoad, packetType: number): void
-  makeRequest(request: Request, packetType: number, payload: { getData: (callback: (data: Buffer) => void) => void, toString: (indent?: string) => string }): void
-  makeRequest(request: Request | BulkLoad, packetType: number, payload?: { getData: (callback: (data: Buffer) => void) => void, toString: (indent?: string) => string }) {
+  makeRequest(request: Request, packetType: number, payload: Iterable<Buffer> & { toString: (indent?: string) => string }): void
+  makeRequest(request: Request | BulkLoad, packetType: number, payload?: Iterable<Buffer> & { toString: (indent?: string) => string }) {
     if (this.state !== this.STATE.LOGGED_IN) {
       const message = 'Requests can only be made in the ' + this.STATE.LOGGED_IN.name + ' state, not the ' + this.state.name + ' state';
       this.debug.log(message);
@@ -2002,18 +2040,10 @@ class Connection extends EventEmitter {
       let message: Message;
 
       request.once('cancel', () => {
+        // There's three ways to handle request cancelation:
         if (!this.isRequestActive(request)) {
           // Cancel was called on a request that is no longer active on this connection
           return;
-        }
-
-        // There's three ways to handle request cancelation:
-        if (this.state === this.STATE.BUILDING_CLIENT_REQUEST) {
-          // The request was cancelled before buffering finished
-          this.request = undefined;
-          request.callback(RequestError('Canceled.', 'ECANCEL'));
-          this.transitionTo(this.STATE.LOGGED_IN);
-
         } else if (message.writable) {
           // - if the message is still writable, we'll set the ignore bit
           //   and end the message.
@@ -2050,33 +2080,23 @@ class Connection extends EventEmitter {
       } else {
         this.createRequestTimer();
 
-        // Transition to an intermediate state to ensure that no new requests
-        // are made on the connection while the buffer is being populated.
-        this.transitionTo(this.STATE.BUILDING_CLIENT_REQUEST);
+        message = new Message({ type: packetType, resetConnection: this.resetConnectionOnNextRequest });
+        this.messageIo.outgoingMessageStream.write(message);
+        this.transitionTo(this.STATE.SENT_CLIENT_REQUEST);
 
-        payload!.getData((data) => {
-          if (this.state !== this.STATE.BUILDING_CLIENT_REQUEST) {
-            // Something else has happened on the connection since starting to
-            // build the request. That state change should have invoked the
-            // request handler so there is nothing to do at this point.
-            return;
-          }
-
-          message = this.messageIo.sendMessage(packetType, data, this.resetConnectionOnNextRequest);
-
+        message.once('finish', () => {
           this.resetConnectionOnNextRequest = false;
           this.debug.payload(function() {
             return payload!.toString('  ');
           });
 
-          this.transitionTo(this.STATE.SENT_CLIENT_REQUEST);
-
           if (request.paused) { // Request.pause() has been called before the request was started
             this.pauseRequest(request);
           }
         });
-      }
 
+        Readable.from(payload!).pipe(message);
+      }
     }
   }
 
@@ -2128,6 +2148,10 @@ export default Connection;
 module.exports = Connection;
 
 Connection.prototype.STATE = {
+  INITIALIZED: {
+    name: 'Initialized',
+    events: {}
+  },
   CONNECTING: {
     name: 'Connecting',
     enter: function() {
@@ -2471,18 +2495,6 @@ Connection.prototype.STATE = {
     events: {
       socketError: function() {
         this.transitionTo(this.STATE.FINAL);
-      }
-    }
-  },
-  BUILDING_CLIENT_REQUEST: {
-    name: 'BuildingClientRequest',
-    events: {
-      socketError: function(err) {
-        const sqlRequest = this.request!;
-        this.request = undefined;
-        this.transitionTo(this.STATE.FINAL);
-
-        sqlRequest.callback(err);
       }
     }
   },

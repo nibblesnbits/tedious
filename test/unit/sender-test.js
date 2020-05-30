@@ -154,9 +154,9 @@ function sendToHostCommonTestSetup(lookupError) {
   this.strategyCancelStub = sinon.stub(testStrategy, 'cancel');
   this.strategyCancelStub.withArgs();
 
-  this.lookupSpy = sinon.spy((function lookup(string, options, callback) {
+  this.lookupSpy = sinon.spy(function lookup(string, options, callback) {
     process.nextTick(callback, lookupError, this.addresses);
-  }).bind(this));
+  }.bind(this));
 
   this.sender = new Sender(anyHost, anyPort, this.lookupSpy, anyRequest);
 

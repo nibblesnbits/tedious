@@ -137,7 +137,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # Only run these tests if we have access to the secrets
-    if: ${{ secrets.AZURE_SERVER }}
+    if: ${{ github.repository == 'tediousjs/tedious' }}
 
     steps:
     - uses: actions/checkout@v1

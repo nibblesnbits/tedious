@@ -8,9 +8,12 @@ jobs:
     name: Linting
     steps:
     - uses: actions/checkout@v1
-    - run: |
-        npm install
-        npm run lint
+    - name: Use Node.js 12
+      uses: actions/setup-node@v1
+      with:
+        node-version: 12
+    - run: npm ci
+    - run: npm run lint
      
   test:
     runs-on: ubuntu-latest

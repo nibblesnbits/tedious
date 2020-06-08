@@ -35,13 +35,17 @@ jobs:
       matrix:
         node-version: [6.x, 8.x, 10.x, 12.x, 14.x]
 
+    services:
+      sqlserver:
+        image: microsoft/mssql-server-linux
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "yourStrong(!)Password"
+
     steps:
     - uses: actions/checkout@v1
-
-    - name: Start SQLServer
-      run: |
-        docker pull microsoft/mssql-server-linux
-        docker run -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=yourStrong(!)Password' -p 1433:1433 -d microsoft/mssql-server-linux
 
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v1

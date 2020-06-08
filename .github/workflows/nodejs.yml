@@ -135,7 +135,8 @@ jobs:
     name: Azure SQL Server / Node.js 12.x
     runs-on: ubuntu-latest
 
-    if: ${{ github.event_name == 'push' }}
+    # Only run these tests if we have access to the secrets
+    if: ${{ secrets.AZURE_SERVER }}
 
     steps:
     - uses: actions/checkout@v1

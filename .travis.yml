@@ -6,6 +6,7 @@ node_js:
   - "10"
   - "12"
   - "13"
+  - "14"
 
 cache:
   npm: false
@@ -86,7 +87,7 @@ jobs:
               }
             },
             "options": {
-              "database": "test",
+              "database": "tedious",
               "trustServerCertificate": true
             }
           }
@@ -110,7 +111,7 @@ jobs:
               }
             },
             "options": {
-              "database": "test",
+              "database": "tedious",
               "trustServerCertificate": true
             }
           }

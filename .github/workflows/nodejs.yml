@@ -1,11 +1,11 @@
 name: Node CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
     name: Linting
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
     - name: Use Node.js 12
@@ -29,9 +29,9 @@ jobs:
     - run: npm run lint
 
   test:
-    runs-on: ubuntu-latest
-
     name: SQL Server Linux / Node.js ${{ matrix.node-version }}
+
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
@@ -128,8 +128,11 @@ jobs:
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
   azure:
-    runs-on: ubuntu-latest
     name: Azure SQL Server / Node.js 12.x
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event_name == 'push' }}
+
     steps:
     - uses: actions/checkout@v1
     - name: Use Node.js 12

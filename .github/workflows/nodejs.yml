@@ -127,9 +127,9 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
-  azure_sql_authentication:
+  azure:
     runs-on: ubuntu-latest
-    name: Azure SQL Server (SQL Authentication) / Node.js 12.x
+    name: Azure SQL Server / Node.js 12.x
     steps:
     - uses: actions/checkout@v1
     - name: Use Node.js 12
@@ -137,7 +137,7 @@ jobs:
       with:
         node-version: 12
 
-    - name: Set up CI configuration
+    - name: Set up CI configuration (SQL Authentication)
       run: |
         mkdir ~/.tedious
         echo '{
@@ -176,17 +176,7 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
-  azure_ad_authentication:
-    runs-on: ubuntu-latest
-    name: Azure SQL Server (AD Authentication) / Node.js 12.x
-    steps:
-    - uses: actions/checkout@v1
-    - name: Use Node.js 12
-      uses: actions/setup-node@v1
-      with:
-        node-version: 12
-
-    - name: Set up CI configuration
+    - name: Set up CI configuration (AD Authentication)
       run: |
         mkdir ~/.tedious
         echo '{

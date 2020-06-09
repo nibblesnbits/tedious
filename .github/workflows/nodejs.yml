@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
 jobs:
   lint:
     name: Linting
@@ -99,38 +102,31 @@ jobs:
     - run: npm ci
 
     - name: run unit tests
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test && npx codecov
 
     - name: run integration tests (TDS 7.4)
       env:
         TEDIOUS_TDS_VERSION: 7_4
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
     - name: run integration tests (TDS 7.3B)
       env:
         TEDIOUS_TDS_VERSION: 7_3_B
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
     - name: run integration tests (TDS 7.3A)
       env:
         TEDIOUS_TDS_VERSION: 7_3_A
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
     - name: run integration tests (TDS 7.2)
       env:
         TEDIOUS_TDS_VERSION: 7_2
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
     - name: run integration tests (TDS 7.1)
       env:
         TEDIOUS_TDS_VERSION: 7_1
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
   azure:
@@ -183,8 +179,6 @@ jobs:
         }' > ~/.tedious/test-connection.json
 
     - name: run integration tests
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov
 
     - name: Set up CI configuration (AD Authentication)
@@ -207,6 +201,4 @@ jobs:
         }' > ~/.tedious/test-connection.json
 
     - name: run integration tests
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       run: npx nyc --reporter=lcov npm run test-integration && npx codecov

@@ -42,11 +42,11 @@ jobs:
 
     - name: Prepare Commitlint (TRAVIS_COMMIT_RANGE)
       if: ${{ github.event_name == 'pull_request' }}
-      run: echo "::set-env name=TRAVIS_COMMIT_RANGE::HEAD~.."
+      run: echo "::set-env name=TRAVIS_COMMIT_RANGE::HEAD~..HEAD"
 
     - name: Prepare Commitlint (TRAVIS_COMMIT_RANGE)
       if: ${{ github.event_name == 'push' }}
-      run: echo "::set-env name=TRAVIS_COMMIT_RANGE::${{ github.event.before }}.."
+      run: echo "::set-env name=TRAVIS_COMMIT_RANGE::${{ github.event.before }}..${{ github.event.after }}"
 
     - run: npx commitlint-travis
       env:
